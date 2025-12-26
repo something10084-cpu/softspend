@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Finance Tracker</title>
+
+<style>
+:root {
+  --bg: #0f1115;
+  --card: #1a1d24;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #6366f1;
+}
+
+* {
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.container {
+  max-width: 420px;
+  margin: auto;
+  padding: 16px;
+}
+
+.tabs {
+  display: flex;
+  background: var(--card);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 12px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.tab.active {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+.card {
+  background: var(--card);
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+
+input, select, button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 8px;
+  border-radius: 8px;
+  border: none;
+  background: #111827;
+  color: var(--text);
+  font-size: 15px;
+}
+
+button {
+  background: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:active {
+  opacity: 0.9;
+}
+
+.list {
+  margin-top: 10px;
+}
+
+.item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid #2a2d36;
+}
+
+.small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.hidden {
+  display: none;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('spend')">Spendings</div>
+    <div class="tab" onclick="switchTab('invest')">Investments</div>
+  </div>
+
+  <!-- Spendings -->
+  <div id="spend">
+    <div class="card">
+      <input type="date" id="sDate">
+      <input type="number" id="sAmount" placeholder="Amount spent">
+      <select id="sCategory">
+        <option>Food</option>
+        <option>Skincare</option>
+        <option>Daily Grocery</option>
+        <option>Travel</option>
+        <option>Miscellaneous</option>
+      </select>
+      <button onclick="saveSpending()">Save Spending</button>
+    </div>
+
+    <div class="card">
+      <div class="small">15th → 15th Summary</div>
+      <div id="summary"></div>
+    </div>
+
+    <div class="card">
+      <div class="small">All Spendings</div>
+      <div id="spendList" class="list"></div>
+    </div>
+  </div>
+
+  <!-- Investments -->
+  <div id="invest" class="hidden">
+    <div class="card">
+      <input type="date" id="iDate">
+      <input type="number" id="iAmount" placeholder="Investment amount">
+      <button onclick="saveInvestment()">Save Investment</button>
+    </div>
+
+    <div class="card">
+      <div class="small">Monthly & Total</div>
+      <div id="investSummary"></div>
+    </div>
+
+    <div class="card">
+      <div class="small">All Investments</div>
+      <div id="investList" class="list"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const spendings = JSON.parse(localStorage.getItem("spendings") || "[]");
+const investments = JSON.parse(localStorage.getItem("investments") || "[]");
+
+const today = new Date().toISOString().split("T")[0];
+document.getElementById("sDate").value = today;
+document.getElementById("iDate").value = today;
+
+function switchTab(tab) {
+  document.getElementById("spend").classList.toggle("hidden", tab !== "spend");
+  document.getElementById("invest").classList.toggle("hidden", tab !== "invest");
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  event.target.classList.add("active");
+}
+
+function saveSpending() {
+  spendings.push({
+    date: sDate.value,
+    amount: Number(sAmount.value),
+    category: sCategory.value
+  });
+  localStorage.setItem("spendings", JSON.stringify(spendings));
+  sAmount.value = "";
+  renderSpendings();
+}
+
+function saveInvestment() {
+  investments.push({
+    date: iDate.value,
+    amount: Number(iAmount.value)
+  });
+  localStorage.setItem("investments", JSON.stringify(investments));
+  iAmount.value = "";
+  renderInvestments();
+}
+
+function renderSpendings() {
+  spendList.innerHTML = "";
+  [...spendings].reverse().forEach(s => {
+    spendList.innerHTML += `
+      <div class="item">
+        <div>${s.category} <span class="small">${s.date}</span></div>
+        <div>₹${s.amount}</div>
+      </div>`;
+  });
+
+  const summary = {};
+  spendings.forEach(s => {
+    summary[s.category] = (summary[s.category] || 0) + s.amount;
+  });
+
+  summaryDiv = "";
+  for (let k in summary) {
+    summaryDiv += `<div class="item"><div>${k}</div><div>₹${summary[k]}</div></div>`;
+  }
+  document.getElementById("summary").innerHTML = summaryDiv;
+}
+
+function renderInvestments() {
+  investList.innerHTML = "";
+  let total = 0;
+  let monthly = {};
+
+  investments.forEach(i => {
+    total += i.amount;
+    const m = i.date.slice(0,7);
+    monthly[m] = (monthly[m] || 0) + i.amount;
+  });
+
+  [...investments].reverse().forEach(i => {
+    investList.innerHTML += `
+      <div class="item">
+        <div>${i.date}</div>
+        <div>₹${i.amount}</div>
+      </div>`;
+  });
+
+  let text = "";
+  for (let m in monthly) {
+    text += `<div class="item"><div>${m}</div><div>₹${monthly[m]}</div></div>`;
+  }
+  text += `<div class="item"><strong>Total</strong><strong>₹${total}</strong></div>`;
+  investSummary.innerHTML = text;
+}
+
+renderSpendings();
+renderInvestments();
+</script>
+</body>
+</html>
