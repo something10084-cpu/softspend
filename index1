@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Finance Tracker | SoftSpend</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+:root{
+  --bg:#0f1115;--card:#1a1d24;--text:#e5e7eb;
+  --muted:#9ca3af;--accent:#6366f1;--success:#10b981;
+}
+*{box-sizing:border-box;font-family:system-ui}
+body{margin:0;background:var(--bg);color:var(--text);padding-bottom:90px}
+.container{max-width:430px;margin:auto;padding:14px}
+
+/* Tabs */
+.tabs{display:flex;background:var(--card);border-radius:12px;overflow:hidden;margin-bottom:10px}
+.tab{flex:1;padding:14px;text-align:center;color:var(--muted);cursor:pointer}
+.tab.active{background:var(--accent);color:#fff;font-weight:600}
+
+/* Cards */
+.card{background:var(--card);border-radius:12px;padding:16px;margin-top:14px}
+input,select,button{
+  width:100%;padding:12px;margin-top:8px;
+  background:#111827;color:var(--text);
+  border:1px solid #2a2d36;border-radius:8px
+}
+button{background:var(--accent);border:none;font-weight:600;color:white;cursor:pointer}
+
+.row{display:flex;justify-content:space-between;align-items:center}
+.item{border-bottom:1px solid #2a2d36;padding:10px 0}
+.small{font-size:12px;color:var(--muted)}
+.hidden{display:none}
+.details{background:#111827;border-radius:8px;padding:10px;margin-top:6px}
+
+/* Split FAB */
+#splitBtn{
+  position:fixed;bottom:20px;left:20px;
+  width:56px;height:56px;border-radius:50%;
+  background:var(--accent);color:white;
+  display:flex;align-items:center;justify-content:center;
+  font-size:24px;cursor:pointer;z-index:99;
+}
+
+/* Modal */
+.modal{
+  position:fixed;inset:0;background:#000a;
+  display:none;align-items:center;justify-content:center;
+  z-index:1000;padding:20px
+}
+.modal.show{display:flex}
+.modalCard{
+  background:var(--card);border-radius:14px;
+  padding:18px;width:100%;max-width:360px
+}
+
+/* Friend chips */
+.friend-chip{
+  display:inline-block;
+  padding:6px 12px;
+  margin:4px;
+  background:#2a2d36;
+  border-radius:16px;
+  cursor:pointer;
+  font-size:13px
+}
+.friend-chip.selected{background:var(--accent)}
+
+/* Chart */
+#chartContainer {
+  margin-top: 20px;
+  width: 100%;
+  max-width: 400px;
+  height: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<div class="tabs">
+  <div id="tab-spend" class="tab active" onclick="switchTab('spend')">Spendings</div>
+  <div id="tab-invest" class="tab" onclick="switchTab('invest')">Investments</div>
+</div>
+
+<!-- SPENDINGS -->
+<div id="spendSection">
+  <div class="card">
+    <select id="category" onchange="renderDynamicForm()">
+      <option value="">Select Category</option>
+      <option>Food</option>
+      <option>Daily Grocery</option>
+      <option>Skincare</option>
+      <option>Travel</option>
+      <option>Miscellaneous</option>
+    </select>
+    <input type="date" id="date">
+    <div id="dynamicForm"></div>
+    <button onclick="saveSpending()">Save Spending</button>
+  </div>
+
+  <div class="card">
+    <div class="small">Category Summary</div>
+    <div id="summary"></div>
+  </div>
+
+  <div class="card">
+    <div class="small">Recent History</div>
+    <div id="historyList"></div>
+  </div>
+
+  <!-- Pie Chart Container -->
+  <div id="chartContainer"></div>
+</div>
+
+<!-- INVESTMENTS -->
+<div id="investSection" class="hidden">
+  <div class="card">
+    <input type="date" id="iDate">
+    <input type="number" id="iAmount" placeholder="Investment amount (₹)">
+    <button onclick="saveInvestment()">Save Investment</button>
+  </div>
+  <div class="card">
+    <div class="small">Monthly Growth</div>
+    <div id="investSummary"></div>
+  </div>
+  <div class="card" id="investList"></div>
+</div>
+
+</div>
+
+<!-- SPLIT BUTTON -->
+<div id="splitBtn" onclick="openSplit()">⇄</div>
+
+<!-- SPLIT MODAL -->
+<div id="splitModal" class="modal">
+  <div class="modalCard">
+    <div class="row">
+      <strong>Split Bill</strong>
+      <span onclick="closeSplit()" style="cursor:pointer">✕</span>
+    </div>
+
+    <input id="splitAmount" type="number" placeholder="Total bill amount" oninput="updateSplitPreview()">
+
+    <div class="small" style="margin-top:10px">Select friends</div>
+    <div id="friendList"></div>
+
+    <input id="newFriend" placeholder="Add new friend (optional)">
+
+    <div id="splitPreview" class="small"></div>
+
+    <button onclick="saveSplit()" style="background:var(--success);margin-top:14px">
+      Save My Share
+    </button>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+
+let spendings=JSON.parse(localStorage.getItem("spendings")||"[]");
+let investments=JSON.parse(localStorage.getItem("investments")||"[]");
+let friends=JSON.parse(localStorage.getItem("friends")||"{}");
+let selectedFriends=[];
+
+date.value=iDate.value=new Date().toISOString().split("T")[0];
+
+/* Tabs */
+function switchTab(t) {
+  spendSection.classList.toggle("hidden", t !== "spend");
+  investSection.classList.toggle("hidden", t !== "invest");
+
+  document.querySelectorAll(".tab").forEach(tab => {
+    tab.classList.remove("active");
+  });
+
+  if (t === "spend") {
+    tab_spend.classList.add("active");
+    tab_spend.style.backgroundColor = "var(--accent)";
+    tab_spend.style.color = "white";
+
+    tab_invest.style.backgroundColor = "var(--card)";
+    tab_invest.style.color = "var(--muted)";
+  } else if (t === "invest") {
+    tab_invest.classList.add("active");
+    tab_invest.style.backgroundColor = "var(--accent)";
+    tab_invest.style.color = "white";
+
+    tab_spend.style.backgroundColor = "var(--card)";
+    tab_spend.style.color = "var(--muted)";
+  }
+}
+
+/* -------- SPLIT BILL (from second code, adapted) -------- */
+function openSplit(){
+  splitModal.classList.add("show");
+  selectedFriends=[];
+  splitAmount.value="";
+  newFriend.value="";
+  splitPreview.innerHTML="";
+  renderFriendList();
+}
+
+function closeSplit(){
+  splitModal.classList.remove("show");
+}
+
+function renderFriendList(){
+  friendList.innerHTML="";
+  Object.keys(friends)
+    .sort((a,b)=>friends[b]-friends[a])
+    .forEach(name=>{
+      const chip=document.createElement("div");
+      chip.className="friend-chip";
+      chip.textContent=name;
+      chip.onclick=()=>{
+        chip.classList.toggle("selected");
+        if(selectedFriends.includes(name))
+          selectedFriends=selectedFriends.filter(n=>n!==name);
+        else selectedFriends.push(name);
+        updateSplitPreview();
+      };
+      friendList.appendChild(chip);
+    });
+}
+
+function updateSplitPreview(){
+  const total=Number(splitAmount.value||0);
+  const people=selectedFriends.length+1;
+  if(total && people>1){
+    splitPreview.innerHTML=
+      `Split between ${people} people → ₹${(total/people).toFixed(2)} each`;
+  }else splitPreview.innerHTML="";
+}
+
+function saveSplit(){
+  const newName=newFriend.value.trim();
+  if(newName && !friends[newName]){
+    friends[newName]=0;
+    selectedFriends.push(newName);
+  }
+
+  const total=Number(splitAmount.value);
+  const people=selectedFriends.length+1;
+  if(!total||people<=1) return alert("Select friends & amount");
+
+  const myShare=+(total/people).toFixed(2);
+
+  selectedFriends.forEach(n=>friends[n]=(friends[n]||0)+1);
+  localStorage.setItem("friends",JSON.stringify(friends));
+
+  spendings.push({
+    date:date.value,
+    category:"Split Bill",
+    amount:myShare,
+    items:[{name:`Total ₹${total} split with ${selectedFriends.join(", ")}`,amount:myShare}]
+  });
+
+  localStorage.setItem("spendings",JSON.stringify(spendings));
+  closeSplit();
+  renderAll();
+}
+
+/* -------- INVESTMENTS & SPENDINGS (unchanged logic) -------- */
+function saveInvestment() {
+  investments.push({
+    date: iDate.value,
+    amount: Number(iAmount.value)
+  });
+  localStorage.setItem("investments", JSON.stringify(investments));
+  iAmount.value = "";
+  renderInvestments();
+}
+
+function renderInvestments() {
+  investList.innerHTML = "";
+  let total = 0;
+  let monthly = {};
+
+  investments.forEach(i => {
+    total += i.amount;
+    const m = i.date.slice(0, 7);
+    monthly[m] = (monthly[m] || 0) + i.amount;
+  });
+
+  [...investments].reverse().forEach(i => {
+    investList.innerHTML += `
+      <div class="item">
+        <div>${i.date}</div>
+        <div>₹${i.amount}</div>
+      </div>`;
+  });
+
+  let text = "";
+  for (let m in monthly) {
+    text += `<div class="item"><div>${m}</div><div>₹${monthly[m]}</div></div>`;
+  }
+  text += `<div class="item"><strong>Total</strong><strong>₹${total}</strong></div>`;
+  investSummary.innerHTML = text;
+}
+
+function renderDynamicForm() {
+  const category = $("category").value;
+  const dynamicForm = $("dynamicForm");
+  dynamicForm.innerHTML = ""; // Clear previous form
+
+  if (category === "Food" || category === "Daily Grocery" || category === "Skincare") {
+    dynamicForm.innerHTML = `
+      <div id="itemsContainer">
+        <div class="row">
+          <input type="text" placeholder="Item name" class="item-name">
+          <input type="number" placeholder="Amount" class="item-amount">
+        </div>
+      </div>
+      <button type="button" onclick="addMoreItems()">Add More</button>
+    `;
+  } else if (category === "Travel") {
+    dynamicForm.innerHTML = `
+      <input type="text" placeholder="From">
+      <input type="text" placeholder="To">
+      <select>
+        <option>Bus</option>
+        <option>Train</option>
+        <option>Auto</option>
+        <option>Flight</option>
+      </select>
+      <input type="number" placeholder="Amount">
+    `;
+  } else if (category === "Miscellaneous") {
+    dynamicForm.innerHTML = `
+      <input type="text" placeholder="Rename category (optional)">
+      <input type="number" placeholder="Amount">
+    `;
+  }
+}
+
+// Add more items dynamically
+function addMoreItems() {
+  const itemsContainer = $("itemsContainer");
+  const newItem = document.createElement("div");
+  newItem.className = "row";
+  newItem.innerHTML = `
+    <input type="text" placeholder="Item name" class="item-name">
+    <input type="number" placeholder="Amount" class="item-amount">
+  `;
+  itemsContainer.appendChild(newItem);
+}
+
+// Save spending data
+function saveSpending() {
+  const category = $("category").value;
+  const date = $("date").value;
+  const dynamicForm = $("dynamicForm");
+  let items = [];
+  let amount = 0;
+
+  if (category === "Food" || category === "Daily Grocery" || category === "Skincare") {
+    const itemNames = dynamicForm.querySelectorAll(".item-name");
+    const itemAmounts = dynamicForm.querySelectorAll(".item-amount");
+
+    itemNames.forEach((nameInput, index) => {
+      const name = nameInput.value;
+      const amt = Number(itemAmounts[index].value);
+      if (name && amt) {
+        items.push({ name, amount: amt });
+        amount += amt;
+      }
+    });
+  } else if (category === "Travel") {
+    const from = dynamicForm.querySelector("input[placeholder='From']").value;
+    const to = dynamicForm.querySelector("input[placeholder='To']").value;
+    const mode = dynamicForm.querySelector("select").value;
+    amount = Number(dynamicForm.querySelector("input[type='number']").value);
+    if (from && to && mode && amount) {
+      items.push({ name: `${from} to ${to} (${mode})`, amount });
+    }
+  } else if (category === "Miscellaneous") {
+    const rename = dynamicForm.querySelector("input[placeholder='Rename category (optional)']").value;
+    amount = Number(dynamicForm.querySelector("input[type='number']").value);
+    if (amount) {
+      items.push({ name: rename || "Miscellaneous", amount });
+    }
+  }
+
+  if (items.length > 0) {
+    spendings.push({ date, category, amount, items });
+    localStorage.setItem("spendings", JSON.stringify(spendings));
+    renderAll();
+  } else {
+    alert("Please fill out all fields.");
+  }
+}
+
+// Ensure the canvas is properly cleared and the chart is centered
+function renderPieChart(totals) {
+  const chartContainer = document.getElementById("chartContainer");
+  chartContainer.innerHTML = ""; // Clear previous chart
+
+  if (Object.keys(totals).length === 0) {
+    chartContainer.innerHTML = "<div style='text-align:center; color: var(--muted);'>No data available for the selected date range</div>";
+    return;
+  }
+
+  const data = Object.keys(totals).map((category) => ({
+    label: category,
+    value: totals[category],
+  }));
+
+  const totalAmount = data.reduce((sum, item) => sum + item.value, 0);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 400;
+  canvas.height = 400;
+  chartContainer.appendChild(canvas);
+
+  const ctx = canvas.getContext("2d");
+  const colors = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40"];
+
+  let startAngle = 0;
+  data.forEach((item, index) => {
+    const sliceAngle = (item.value / totalAmount) * 2 * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(200, 200);
+    ctx.arc(200, 200, 200, startAngle, startAngle + sliceAngle);
+    ctx.fillStyle = colors[index % colors.length];
+    ctx.fill();
+
+    // Add labels
+    const midAngle = startAngle + sliceAngle / 2;
+    const textX = 200 + Math.cos(midAngle) * 140;
+    const textY = 200 + Math.sin(midAngle) * 140;
+    ctx.fillStyle = "#000";
+    ctx.font = "14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(`₹${item.value}`, textX, textY);
+
+    startAngle += sliceAngle;
+  });
+}
+
+// Update renderAll to include category-wise totals in the summary
+function renderAll() {
+  historyList.innerHTML = "";
+  summary.innerHTML = "";
+  let totals = {};
+
+  // Calculate the date range: 15th of last month to 15th of this month
+  const today = new Date();
+  const startOfRange = new Date(today.getFullYear(), today.getMonth() - 1, 15);
+  const endOfRange = new Date(today.getFullYear(), today.getMonth(), 15);
+
+  spendings.slice().reverse().forEach((s) => {
+    const spendingDate = new Date(s.date);
+
+    // Check if the spending falls within the date range
+    if (spendingDate >= startOfRange && spendingDate <= endOfRange) {
+      totals[s.category] = (totals[s.category] || 0) + s.amount;
+    }
+
+    historyList.innerHTML += `
+      <div class="item" onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <div class="row"><div>${s.date} • <b>${s.category}</b></div>
+        <div>₹${s.amount.toFixed(2)}</div></div>
+      </div>
+      <div class="details hidden">
+        ${s.items.map((i) => `${i.name}: ₹${i.amount}`).join("<br>")}
+      </div>`;
+  });
+
+  // Display category summary for the specified date range
+  summary.innerHTML = `<div class='small'>Summary (15th of last month to 15th of this month)</div>`;
+  for (let k in totals) {
+    summary.innerHTML += `<div class="row item"><div>${k}</div><div>₹${totals[k]}</div></div>`;
+  }
+
+  // Render the pie chart
+  renderPieChart(totals);
+
+  investList.innerHTML = "";
+  investSummary.innerHTML = "";
+  let tot = 0,
+    mon = {};
+  investments.forEach((i) => {
+    tot += i.amount;
+    const m = i.date.slice(0, 7);
+    mon[m] = (mon[m] || 0) + i.amount;
+    investList.innerHTML += `<div class="row item"><div>${i.date}</div><div>₹${i.amount}</div></div>`;
+  });
+  for (let m in mon)
+    investSummary.innerHTML += `<div class="row item"><div>${m}</div><div>₹${mon[m]}</div></div>`;
+  investSummary.innerHTML += `<div class="row item" style="color:var(--success)">
+    <strong>Total</strong><strong>₹${tot}</strong></div>`;
+}
+
+renderAll();
+</script>
+</body>
+</html>
